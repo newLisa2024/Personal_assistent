@@ -170,3 +170,5 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 git add .gitignore
+git commit -m "Обновлен .gitignore, добавлены файлы"
+git push amvera main

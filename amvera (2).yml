@@ -1,2 +1,12 @@
 meta:
-  toolchain: {}
+  environment: python
+  toolchain:
+    name: python
+    version: 3.10  # укажи нужную тебе версию Python
+
+build:
+  args: pip install -r requirements.txt
+
+run:
+  command: python main.py  # или укажи команду для запуска твоего приложения
+

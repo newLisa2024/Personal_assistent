@@ -67,7 +67,7 @@ def register_handlers(bot: telebot.TeleBot, client: openai.OpenAI) -> Dict[int, 
                     messages=messages,
                     temperature=0.7,
                     max_tokens=1500,
-                    timeout=20  # таймаут запроса к OpenAI (важно!)
+                    request_timeout=20  # таймаут запроса к OpenAI (важно!)
                 )
                 response_text = response.choices[0].message.content
                 messages.append({"role": "assistant", "content": response_text})

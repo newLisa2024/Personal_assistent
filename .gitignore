@@ -172,3 +172,4 @@ cython_debug/
 git add .gitignore
 git commit -m "Обновлен .gitignore, добавлены файлы"
 git push amvera main
+*~

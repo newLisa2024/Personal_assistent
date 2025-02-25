@@ -2,7 +2,6 @@
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from functools import partial
-import time  # <-- добавлено для пауз при повторных попытках
 import telebot
 import openai
 from loguru import logger
@@ -40,61 +39,40 @@ def register_handlers(bot: telebot.TeleBot, client: openai.OpenAI) -> Dict[int, 
             return False
 
     def get_openai_response(chat_id: int, prompt: str) -> str:
-        """
-        Обработчик запросов к OpenAI с учётом контекста, с несколькими
-        повторными попытками при таймаутах или API ошибках.
-        """
-        messages = user_context[chat_id]["messages"]
-        messages.append({"role": "user", "content": prompt})
+        """Обработчик запросов к OpenAI с учетом контекста"""
+        try:
+            messages = user_context[chat_id]["messages"]
+            messages.append({"role": "user", "content": prompt})
 
-        max_retries = 3
-        for attempt in range(max_retries):
-            try:
-                response = client.chat.completions.create(
-                    model="gpt-4o",
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=1500,
-                    request_timeout=20  # таймаут запроса к OpenAI (важно!)
-                )
-                response_text = response.choices[0].message.content
-                messages.append({"role": "assistant", "content": response_text})
-                return response_text
-
-            except (openai.error.Timeout, openai.error.APIError) as e:
-                # Ошибка таймаута или внутренняя ошибка API
-                logger.error(f"OpenAI Error (attempt {attempt+1}/{max_retries}): {e}")
-                if attempt < max_retries - 1:
-                    # Подождём секунду и попробуем снова
-                    time.sleep(1)
-                else:
-                    return "Сервис временно недоступен. Попробуйте позже."
-
-            except openai.error.AuthenticationError as e:
-                # Ошибка аутентификации (неверный ключ, запрет доступа и т.п.)
-                logger.error(f"OpenAI Auth Error: {e}")
-                return "Ошибка аутентификации. Пожалуйста, сообщите администратору."
-
-            except Exception as e:
-                # Любая другая непредвиденная ошибка
-                logger.error(f"Unexpected error: {e}")
-                return "Произошла непредвиденная ошибка. Попробуйте еще раз."
-
-        # Теоретически сюда не дойдём, если max_retries > 0
-        return "Сервис временно недоступен. Попробуйте позже."
+            response = client.chat.completions.create(
+                model="gpt-4o",
+                messages=messages,
+                temperature=0.7,
+                max_tokens=1500
+            )
+            response_text = response.choices[0].message.content
+            messages.append({"role": "assistant", "content": response_text})
+            return response_text
+        except openai.AuthenticationError as e:
+            logger.error(f"OpenAI Auth Error: {e}")
+            return "Ошибка аутентификации. Пожалуйста, сообщите администратору."
+        except openai.APIError as e:
+            logger.error(f"OpenAI API Error: {e}")
+            return "Сервис временно недоступен. Попробуйте позже."
+        except Exception as e:
+            logger.error(f"Unexpected error: {e}")
+            return "Произошла непредвиденная ошибка. Попробуйте еще раз."
 
     def safe_message_processing(chat_id: int, message_text: str) -> str:
-        """Безопасная обработка сообщений с таймаутом (ThreadPoolExecutor)"""
+        """Безопасная обработка сообщений с таймаутом"""
         try:
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(
                     partial(get_openai_response, chat_id, message_text)
                 )
-                # Таймаут на уровне потока. Если get_openai_response
-                # не завершится за 20 секунд – будет TimeoutError
                 return future.result(timeout=20)
         except TimeoutError:
-            logger.error("Превышено время ожидания ответа OpenAI (ThreadPoolExecutor)")
+            logger.error("Превышено время ожидания ответа OpenAI")
             return "Время ответа превышено. Попробуйте задать вопрос короче."
         except Exception as e:
             logger.error(f"Ошибка обработки сообщения: {e}")
@@ -177,7 +155,7 @@ def register_handlers(bot: telebot.TeleBot, client: openai.OpenAI) -> Dict[int, 
                 bot.send_message(chat_id, "⏳ Сессия истекла. Для продолжения нажмите /start")
                 return
 
-            # Увеличение счетчика вопросов
+            # Обновление счетчика
             data["question_count"] += 1
             user_context[chat_id]["last_message_time"] = datetime.now().isoformat()
 
@@ -188,10 +166,8 @@ def register_handlers(bot: telebot.TeleBot, client: openai.OpenAI) -> Dict[int, 
             # Обработка анекдотов
             if "анекдот" in message.text.lower():
                 data["joke_count"] += 1
-                response = safe_message_processing(
-                    chat_id,
-                    f"Расскажи профессиональный анекдот №{data['joke_count']} про IT"
-                )
+                response = safe_message_processing(chat_id,
+                                                   f"Расскажи профессиональный анекдот №{data['joke_count']} про IT")
                 bot.send_message(chat_id, response)
                 return
 
